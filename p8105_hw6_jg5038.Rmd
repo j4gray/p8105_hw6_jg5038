@@ -105,4 +105,5 @@ or_all_cities |>
 
 An odds ratio of 1 (shown on the plot as a red line), means there is no difference in the odss of the homicide being solved between males and females. An odds ratio greater than 1 means that homicides where the victim is male have higher odds of being solved and vice versa. The confidence interval is shown by the error bars and where it crosses 1 the results are not significant. 
 
+## Problem 2
 
