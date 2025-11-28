@@ -7,6 +7,8 @@ author: "Julia Gray"
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+library(p8105.datasets)
+library(patchwork)
 
 knitr::opts_chunk$set(
   out.width = "90%"
@@ -106,4 +108,66 @@ or_all_cities |>
 An odds ratio of 1 (shown on the plot as a red line), means there is no difference in the odss of the homicide being solved between males and females. An odds ratio greater than 1 means that homicides where the victim is male have higher odds of being solved and vice versa. The confidence interval is shown by the error bars and where it crosses 1 the results are not significant. 
 
 ## Problem 2
+
+Get the data:
+
+```{r}
+data("weather_df")
+```
+
+Write the bootstrap function, run 5000 times and get $\widehat{r}^2, $\hat{\beta}_1$ and $\hat{\beta}_2$ :
+
+```{r}
+get_bootstrap = function(df) {
+  slice_sample(df, prop = 1, replace = TRUE)
+}
+
+#set this to 100 for now to make knitting faster - remember to change back to 5000
+weather_sample_df = tibble(iter = 1:100) |> 
+  mutate(
+    bs_sample = map(iter, \(i) get_bootstrap(df = weather_df)),
+    sample_lm = map(bs_sample, \(df) lm(tmax~tmin + prcp, data = df)),
+    r_sq_hat = map(sample_lm, \(model) model |> 
+                     broom::glance() |> pull(r.squared)),
+    beta_1_hat = map_dbl(sample_lm, \(model) model |> 
+                           broom::tidy() |> filter(term == "tmin") |> pull(estimate)),
+    beta_2_hat = map_dbl(sample_lm, \(model) model |> 
+                           broom::tidy() |> filter(term == "prcp") |> pull(estimate)),
+    beta_ratio = beta_1_hat / beta_2_hat
+  )
+```
+
+Plot the distribution of estimates:
+
+```{r}
+b1_plot = weather_sample_df |> 
+  ggplot(aes(x = beta_1_hat)) + geom_density()
+
+b2_plot = weather_sample_df |> 
+  ggplot(aes(x = beta_2_hat)) + geom_density()
+
+b1_plot + b2_plot
+```
+
+$\hat{\beta}_1$ and $\hat{\beta}_2$ are both approximately normally distributed with means `r round(mean(pull(weather_sample_df, beta_1_hat)), digits = 3)` and `r round(mean(pull(weather_sample_df, beta_2_hat)), digits = 3)`.
+
+Provide 95% confidence interval for $\widehat{r}^2 and $\hat{\beta}_1$ / $\hat{\beta}_2$ :
+
+```{r}
+weather_sample_df |> 
+  select(beta_1_hat, beta_2_hat, beta_ratio, r_sq_hat) |> 
+  mutate(r_sq_hat = as.numeric(r_sq_hat)) |> 
+  pivot_longer(
+    cols = c(beta_1_hat, beta_2_hat, beta_ratio, r_sq_hat),
+    names_to = "estimate",
+    values_to = "value"
+  ) |> 
+  group_by(estimate) |> 
+  reframe(
+    ci.lower = quantile(value, probs = 0.025),
+    ci.upper = quantile(value, probs = 0.975)
+  ) |> 
+  knitr::kable()
+```
+
 
