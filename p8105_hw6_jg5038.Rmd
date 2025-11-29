@@ -10,6 +10,8 @@ library(tidyverse)
 library(p8105.datasets)
 library(patchwork)
 library(glmnet)
+library(modelr)
+library(mgcv)
 
 knitr::opts_chunk$set(
   out.width = "90%"
@@ -286,6 +288,119 @@ lasso_cv |>
 We can see the cross validated error is basically the same for optimal lambda (all predictors) and lambda within 1 standard deviation.
 
 `r cv_1se` - `r cv_min` = `r cv_1se - cv_min`
+
+Use lambda within 1 se:
+
+```{r}
+lasso_fit_1se = glmnet(x, y, lambda = lambda_1se)
+```
+
+Get predictions
+```{r}
+bwt_predictions = 
+  birth_df |> 
+  select(bwt_lb) |> 
+  mutate(
+    bwt_lb_pred = predict(lasso_fit_1se, newx = x)[,1],
+    residuals = bwt_lb - bwt_lb_pred
+  )
+```
+
+Plot residuals:
+
+```{r}
+bwt_predictions |>
+  ggplot(aes(x = bwt_lb_pred, y = residuals)) +
+  geom_point(alpha = 0.5)
+```
+
+Looks good let's compare to the other models
+
+```{r}
+lm_main_effects = function(df) {
+  lm(bwt_lb ~ blength_in + gaweeks, data = df)
+}
+
+lm_3_way_interaction = function(df) {
+  lm(bwt_lb ~ bhead_in + blength_in + sex + 
+       bhead_in*blength_in + bhead_in*sex + 
+       blength_in*sex + bhead_in*blength_in*sex, 
+     data = birth_df)
+}
+
+glm_lambda_1se = function(df) {
+  y = df |> pull(bwt_lb) 
+  x = model.matrix(bwt_lb ~., df)[,-1]
+  glmnet(x, y, lambda = lambda_1se)
+}
+
+get_rmse = function(model, df) {
+  
+  x = model.matrix(bwt_lb ~., df)[,-1]
+  
+  df = df |> 
+    mutate(bwt_lb_pred = predict(model, newx = x)[,1]) 
+  
+  actual = df |> pull(bwt_lb)
+  predicted =  df |> pull(bwt_lb_pred)
+  rmse = sqrt(mean((actual - predicted)^2))
+  rmse
+}
+```
+
+Perform cross-validation:
+
+```{r}
+cv_df = 
+  crossv_mc(birth_df, n = 100) |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)
+  ) |> 
+  #fit models => use training data
+  mutate(
+    glm = map(train, glm_lambda_1se),
+    lm_me = map(train, lm_main_effects),
+    lm_3wi = map(train, lm_3_way_interaction)
+  ) |> 
+  #get rmse => use testing data
+  mutate(
+    rmse_glm = map2_dbl(glm, test, get_rmse),
+    rmse_linear_simple = map2_dbl(lm_me, test, rmse),
+    rmse_linear_complex = map2_dbl(lm_3wi, test, rmse)
+  )
+```
+
+Look at the RMSE for each model:
+
+```{r}
+cv_df |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin()
+```
+
+RMSE is lowest in glm model
+
+```{r echo=FALSE}
+cv_df |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  group_by(model) |> 
+  summarize(
+    mean_RMSE = mean(rmse)
+  ) |> 
+  knitr::kable(digits = 3)
+```
 
 
 
