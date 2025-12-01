@@ -229,14 +229,6 @@ birth_df = read_csv('./data/birthweight.csv') |>
          m_age_delivery, m_age_menarche, avg_cig_per_day, parity, pnumlbw, pnumsga)
 ```
 
-First let's look at the data by some obvious predictors: length, gestational weeks, and mother's weight gain:
-
-```{r}
-birth_df |> 
-  ggplot(aes(x = bwt_lb, y = m_wtgain_lb)) + 
-  geom_point(alpha = .5)
-```
-
 Look at scatterplots for all continuous variables:
 
 ```{r}
