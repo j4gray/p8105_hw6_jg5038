@@ -229,7 +229,7 @@ birth_df = read_csv('./data/birthweight.csv') |>
          m_age_delivery, m_age_menarche, avg_cig_per_day, parity, pnumlbw, pnumsga)
 ```
 
-Look at scatterplots for all continuous variables (change):
+Look at scatterplots for all continuous variables:
 
 ```{r}
 birth_df |> 
