@@ -229,13 +229,64 @@ birth_df = read_csv('./data/birthweight.csv') |>
          m_age_delivery, m_age_menarche, avg_cig_per_day, parity, pnumlbw, pnumsga)
 ```
 
-First let's look at the data by the most obvious predictor which is mother's weight gain:
+First let's look at the data by some obvious predictors: length, gestational weeks, and mother's weight gain:
 
 ```{r}
 birth_df |> 
   ggplot(aes(x = bwt_lb, y = m_wtgain_lb)) + 
   geom_point(alpha = .5)
 ```
+
+Look at scatterplots for all continuous variables:
+
+```{r}
+birth_df |> 
+  select(-sex, -father_race, -mother_race, -malform) |> 
+  pivot_longer(cols = c("blength_in", "bhead_in", "gaweeks", "fincome", "m_height", "m_wt_lb", "m_ppwt_lb", "m_wtgain_lb", "m_age_delivery", "m_age_menarche","avg_cig_per_day","parity","pnumlbw","pnumsga"), names_to = "variable", values_to = "value") |> 
+  ggplot(aes(x = bwt_lb, y = value)) +
+  geom_point() +
+  facet_wrap(~ variable, scales = "free_y") + # 'scales = "free_y"' allows y-axes to vary
+  labs(title = "Birthweight and all continuous variables")
+```
+
+Look at boxplots for all discrete variables:
+
+```{r}
+birth_df |> 
+  select(bwt_lb, sex, father_race, mother_race, malform) |> 
+  pivot_longer(cols = c("sex", "father_race", "mother_race", "malform"), names_to = "variable", values_to = "value") |> 
+  ggplot(aes(x = bwt_lb, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free_y") + # 'scales = "free_y"' allows y-axes to vary
+  labs(title = "Birthweight and all discrete")
+```
+
+Use a simple linear regression model using 3 predictors that look the most highly correlated in the scatterplots:
+
+```{r}
+lm_3_predictors = function(df) {
+  lm(bwt_lb ~ blength_in + m_wtgain_lb + gaweeks, data = df)
+}
+
+lm_3_fit = lm_3_predictors(birth_df)
+
+#get built in plots for diagnostics
+plot(lm_3_fit)
+```
+
+Get predictions and look at residuals:
+```{r}
+bwt_predictions = 
+  birth_df |> 
+  select(bwt_lb) |> 
+  mutate(
+    bwt_lb_pred = predict(lm_3_fit, newx = x),
+    residuals = bwt_lb - bwt_lb_pred
+  ) |> 
+  ggplot(aes(x = bwt_lb_pred, y = residuals)) +
+  geom_point(alpha = 0.5)
+```
+
 
 Use LASSO to build model:
 
@@ -295,7 +346,7 @@ Use lambda within 1 se:
 lasso_fit_1se = glmnet(x, y, lambda = lambda_1se)
 ```
 
-Get predictions
+Get predictions and plot residuals:
 ```{r}
 bwt_predictions = 
   birth_df |> 
@@ -303,18 +354,12 @@ bwt_predictions =
   mutate(
     bwt_lb_pred = predict(lasso_fit_1se, newx = x)[,1],
     residuals = bwt_lb - bwt_lb_pred
-  )
-```
-
-Plot residuals:
-
-```{r}
-bwt_predictions |>
+  ) |> 
   ggplot(aes(x = bwt_lb_pred, y = residuals)) +
   geom_point(alpha = 0.5)
 ```
 
-Looks good let's compare to the other models
+Run comparison across models:
 
 ```{r}
 lm_main_effects = function(df) {
@@ -360,12 +405,14 @@ cv_df =
   #fit models => use training data
   mutate(
     glm = map(train, glm_lambda_1se),
+    lm_3 = map(train, lm_3_predictors),
     lm_me = map(train, lm_main_effects),
     lm_3wi = map(train, lm_3_way_interaction)
   ) |> 
   #get rmse => use testing data
   mutate(
     rmse_glm = map2_dbl(glm, test, get_rmse),
+    rmse_linear_3 = map2_dbl(lm_3, test, rmse),
     rmse_linear_simple = map2_dbl(lm_me, test, rmse),
     rmse_linear_complex = map2_dbl(lm_3wi, test, rmse)
   )
